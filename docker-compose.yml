@@ -1,0 +1,114 @@
+###############################################################################
+#               PHP/Angular Dev environment with reverse proxy                #
+###############################################################################
+version: "3.1"
+
+networks:
+ webnet:
+
+services:
+
+    # Proxyserver for multihost use
+    nginx-proxy:
+     build: docker-files/proxy
+     container_name: nova-proxy
+     ports:
+      - "80:80"
+     networks:
+      - webnet
+
+    # Database management tool
+    adminer:
+     image: adminer
+     container_name: nova-adminer
+     ports:
+      - "8002:8080"
+     networks:
+      webnet:
+       aliases:
+        - nw-adminer
+
+    # Database
+    db:
+     image: postgres:11.3-alpine
+     container_name: nova-postgres
+     working_dir: /application
+     volumes:
+      - .:/application
+      - ./docker-storage/postgres:/var/lib/postgresql/data
+     environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=pass
+      - POSTGRES_DB=appdb
+     ports:
+      - "8001:5432"
+     networks:
+      webnet:
+       aliases:
+        - nw-postgres
+
+    # Webserver of the project
+    webserver:
+      image: nginx:1.16-alpine
+      container_name: nova-webserver
+      working_dir: /application
+      volumes:
+          - ./projects-backend:/application
+          - ./projects-frontend:/angular-applications
+          - ./docker-files/webserver/nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      ports:
+       - "8080:80"
+      networks:
+       webnet:
+        aliases:
+         - nw-webserver
+
+    # Webserver PHP-Gateway of the project
+    php-fpm:
+      build: docker-files/webserver/php-fpm
+      container_name: nova-php-fpm
+      working_dir: /application
+      volumes:
+        - ./projects-backend:/application
+        - ./docker-files/webserver/php-fpm/php-ini-overrides.ini:/etc/php/7.4/fpm/conf.d/99-overrides.ini
+      networks:
+       webnet:
+        aliases:
+         - nw-php-fpm
+
+    # Frontend app
+    node-angular:
+     build: docker-files/nodeangular
+     container_name: nova-node-angular
+     working_dir: /angular-applications
+     volumes:
+      - ./projects-frontend:/angular-applications
+     ports:
+      - "4201:4201"
+      - "4202:4202"
+      - "4203:4203"
+      - "9876:9876"
+     networks:
+      webnet:
+       aliases:
+        - nw-node-angular
+
+    # Minio High Performance Object Storage
+    minio:
+     image: minio/minio
+     container_name: nova-minio
+     ports:
+      - "9001:9000"
+     volumes:
+      - ./docker-storage/minio:/data
+     environment:
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: pass1234
+     command: server /data
+     networks:
+      webnet:
+       aliases:
+        - nw-minio
+
+volumes:
+ docker-storage:
